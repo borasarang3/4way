@@ -1,5 +1,5 @@
 # 프로젝트 설명 및 소개
-> [**팀 노션 링크**](https://www.notion.so/1ca02816610b80519306d6ed93eed64b?v=1ca02816610b800db511000c7b02c672&pvs=4)
+> [**팀 노션 링크**](https://lyrical-clave-2e3.notion.site/1ca02816610b80519306d6ed93eed64b?v=1ca02816610b800db511000c7b02c672)
 
 **1. 팀 구성**
    
