@@ -1,0 +1,10 @@
+# class
+names :
+    0: bicycle 
+    1: bus
+    2: car
+    3: crosswalk
+    4: motorcycle
+    5: person
+    6: traffic_light
+    7: truck
