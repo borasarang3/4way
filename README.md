@@ -15,18 +15,14 @@
     교차로 내의 차량 및 보행자를 인식하여 인파 혼잡도 및 차량 혼잡도를 도출, 차량과 차량 사이의 간격과 보행자와 차량 사이의 간격을 계산하여 안전거리를 계산 후 거리에 따라 경고 메시지를 출력한다.
 
 **4. 작업 타임 테이블**
-![image](https://github.com/user-attachments/assets/b5d6278a-276a-4105-97da-4b58716484a6)
 
+![image](https://github.com/user-attachments/assets/b5d6278a-276a-4105-97da-4b58716484a6)
 
 **5. 실제 예시**
 
-![4way1](https://github.com/user-attachments/assets/0a7298ae-be95-4d1d-83f0-108e9bef8382)
+![image](https://github.com/user-attachments/assets/aaa26322-233d-4970-890f-60de7349df27)
 
-실시간 안전 경고 메시지 및 실시간 혼잡도 정보를 메시지로 확인 가능.
-막대그래프를 통해 자료를 시각화.
-
-![4way2](https://github.com/user-attachments/assets/4a55a072-64ef-4e8b-8483-2296116c53ba)
-
+실시간 CCTV와 함께 혼잡도 정보를 메시지로 실시간 확인 가능.
 안전거리 측정 후, 위험할 시 경고 메시지 출력
 
 ![4way3](https://github.com/user-attachments/assets/fdbcd78a-e231-4769-ae37-77b3a61eea9b)
