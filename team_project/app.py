@@ -3,7 +3,6 @@ import cv2
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import timeit
 import datetime
 import time
 import uuid
@@ -43,11 +42,9 @@ info1 = info1_col.empty()
 info2 = info2_col.empty()
 info3 = info3_col.empty()
 info4 = info4_col.empty()
-chart_area_stick = st.empty()
 col1, col2 = st.columns([1, 1])
 chart_person_area = col1.empty()
 chart_vehicle_area = col2.empty()
-
 
 # 비디오 경로 설정
 cap = cv2.VideoCapture("http://210.99.70.120:1935/live/cctv007.stream/playlist.m3u8")
@@ -77,50 +74,28 @@ while cap.isOpened():
     
     now = time.time()
     now_str = datetime.datetime.now().strftime("%H:%M:%S")
-    
     frame = cv2.resize(frame, (640, 480))
     
     results = model.track(frame, persist=True, tracker="bytetrack.yaml")    
-    annotated_frame = results[0].plot()
-    
-    start_time = timeit.default_timer()
-
-    # 탐지된 객체 가져오기
     boxes = results[0].boxes
     cls_list = boxes.cls
     ids_list = boxes.id
     
-    end_time = timeit.default_timer()
-    FPS = int(1./(end_time - start_time))
-    
-    # 바운딩 박스 그리기
+    # 바운딩 박스 및 객체 추적 리스트
     tracked_objects = []
     for box in boxes:
         cls_id = int(box.cls[0])
-        obj_id = int(box.id[0]) if box.id is not None else -1
+        obj_id = -1
+        if box.id is not None and len(box.id) > 0:
+            obj_id = int(box.id[0])
         bbox = list(map(int, box.xyxy[0]))
         tracked_objects.append((obj_id, cls_id, bbox))
         
-        cls_name = model.names[cls_id]
-        conf = float(box.conf[0])
-        x1, y1, x2, y2 = map(int, box.xyxy[0])
-        label = f"ID:{obj_id} {cls_name} {conf:.2f}"
-
-        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
-        cv2.putText(frame, label, (x1, y1 - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-
-    # 프레임 RGB 변환 후 표시
-    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    video_area.image(frame, channels="RGB", width=640) #use_column_width=True)
+    # 경고 메시지 저장 리스트
+    alerts = []
     
-    # 인파 / 차량 각각 카운팅
-    person_count = sum(int(cls) == person_id for cls in cls_list)
-    vehicle_count = sum(int(cls) in vehicle_ids for cls in cls_list)
-        
-    # 상태 평가
-    person_status = get_status(person_count)
-    vehicle_status = get_status(vehicle_count)
+    # 위험 객체 ID 저장용 집합
+    danger_ids = set()
     
     # 안전도 분석
     # 거리 계산 함수
@@ -130,9 +105,6 @@ while cap.isOpened():
 
     def euclidean_distance(p1, p2):
         return ((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2) ** 0.5
-    
-    # 경고 메시지 저장 리스트
-    alerts = []
 
     # 차량 객체 필터링
     vehicle_objects = [(obj_id, bbox) for obj_id, cls_id, bbox in tracked_objects if cls_id in vehicle_ids]
@@ -149,6 +121,7 @@ while cap.isOpened():
                 if msg not in previous_alerts:
                     alerts.append(msg)
                     previous_alerts.add(msg)
+                    danger_ids.update([id1, id2])  # 🚨 위험 차량 ID 저장
 
     # 보행자 객체 필터링
     person_objects = [(obj_id, bbox) for obj_id, cls_id, bbox in tracked_objects if cls_id == person_id]
@@ -163,6 +136,55 @@ while cap.isOpened():
                 if msg not in previous_alerts:
                     alerts.append(msg)
                     previous_alerts.add(msg)
+                    danger_ids.update([p_id, v_id])  # 🚨 위험 차량 ID 저장
+                    
+    # 위험 객체의 바운딩 박스 색상 표시
+    for box in boxes:
+        cls_id = int(box.cls[0])
+        obj_id = -1
+        if box.id is not None and len(box.id) > 0:
+            obj_id = int(box.id[0])
+        cls_name = model.names[cls_id]
+        conf = float(box.conf[0])
+        x1, y1, x2, y2 = map(int, box.xyxy[0])
+        label = f"ID:{obj_id} {cls_name}"
+
+        # 박스 색상 체계:
+        # - 위험: 빨간색
+        # - 비위험 보행자: 노란색
+        # - 비위험 차량: 초록색
+        if obj_id in danger_ids:
+            box_color = (0, 0, 255)      # 🔴 빨간색
+            text_color = (0, 0, 255) 
+        else:
+            # 🚶 비위험 보행자 → 노란색
+            if cls_id == person_id:
+                box_color = (0, 255, 255)  # 🟨 노란색
+                text_color = (0, 255, 255)
+            # 🚗 비위험 차량 → 초록색
+            elif cls_id in vehicle_ids:
+                box_color = (0, 255, 0)    # 🟩 초록색
+                text_color = (0, 255, 0) 
+            else:
+                # 기타 클래스 (예외 처리)
+                box_color = (255, 0, 0)
+                text_color = (255, 255, 255)
+
+        cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, 2)
+        cv2.putText(frame, label, (x1, y1 - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, text_color, 2)
+        
+    # 프레임 RGB 변환 후 표시
+    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    video_area.image(frame, channels="RGB", width=640) #use_column_width=True)
+    
+    # 인파 / 차량 각각 카운팅
+    person_count = sum(int(cls) == person_id for cls in cls_list)
+    vehicle_count = sum(int(cls) in vehicle_ids for cls in cls_list)
+        
+    # 상태 평가
+    person_status = get_status(person_count)
+    vehicle_status = get_status(vehicle_count)
                     
     # 최신 알림 시간 갱신
     if alerts:
@@ -191,7 +213,7 @@ while cap.isOpened():
     if now - last_history_update >= update_interval:
         
         # 타임스탬프 생성
-        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        timestamp = datetime.datetime.now()
  
         # 현재 시점 정보 저장
         history.append({
@@ -217,36 +239,94 @@ while cap.isOpened():
         # 추이 시각화 (꺾은선 그래프)
         if len(history_df) >= 4:
             # 사람 / 차량 데이터 분리
-            df_person = history_df[history_df["구분"] == "사람"]
-            df_vehicle = history_df[history_df["구분"] == "차량"]
+            df_person = history_df[history_df["구분"] == "사람"].sort_values("시간").tail(10)
+            df_vehicle = history_df[history_df["구분"] == "차량"].sort_values("시간").tail(10)
             
-            # 각각 꺾은선 그래프 생성
-            fig_person = px.line(df_person, x="시간", 
-                                y="수량", color="상태",
-                                title="🚶 보행자 혼잡도 추이", 
-                                color_discrete_map={
-                                "원활": "green", "보통": "yellow", "혼잡": "orange", "매우 혼잡": "red"
-                                },
-                                markers=True)
+            # 상태별 색상 매핑
+            color_map = {
+                "원활": "green",
+                "보통": "yellow",
+                "혼잡": "orange",
+                "매우 혼잡": "red"
+            }
             
-            # 선 추가
-            fig_person.add_traces(
-                px.line(df_person, x="시간", y="수량").data
-            )
+            # 상태 연속 구간별로 자르기 위한 함수 (마커 추가용)
+            def split_by_status(df):
+                segments = []
+                if df.empty:
+                    return segments
+                current_status = df.iloc[0]["상태"]
+                segment = [df.iloc[0]]
+                for i in range(1, len(df)):
+                    row = df.iloc[i]
+                    if row["상태"] == current_status:
+                        segment.append(row)
+                    else:
+                        segments.append(pd.DataFrame(segment))
+                        segment = [row]
+                        current_status = row["상태"]
+                segments.append(pd.DataFrame(segment))
+                return segments
             
-            fig_vehicle = px.line(df_vehicle, x="시간", 
-                                y="수량", color="상태",
-                                title="🚗 차량 혼잡도 추이",
-                                color_discrete_map={
-                                "원활": "green", "보통": "yellow", "혼잡": "orange", "매우 혼잡": "red"
-                                },
-                                markers=True)
+            # 보행자 상태별 꺾은선 생성
+            fig_person = px.line(df_person, x="시간", y="수량", title="🚶 보행자 혼잡도 추이")
+            fig_person.update_traces(mode='lines', line=dict(color="blue"))
             
-            fig_vehicle.add_traces(
-            px.line(df_vehicle, x="시간", y="수량").data
+            # 상태별로 마커 추가 (상태가 바뀐 지점마다 마커)
+            added_status = set()
+            
+            for seg in split_by_status(df_person):
+                status = seg.iloc[0]["상태"]
+                show_legend = status not in added_status
+                fig_person.add_scatter(
+                    x=seg["시간"], y=seg["수량"],
+                    mode="markers",
+                    marker=dict(color=color_map.get(status, "gray"), size=8, symbol="circle"),
+                    name=status if show_legend else None,
+                    showlegend=show_legend
+                )
+                added_status.add(status)
+
+            # x축을 5초 간격으로 설정
+            fig_person.update_layout(
+                xaxis=dict(
+                    tickformat="%H:%M:%S",
+                    tickangle=45,
+                    tickmode="linear",
+                    dtick=5 * 1000  # 5초 간격으로 설정 (밀리초 단위)
+                )
             )
 
-            # 고정된 영역에 업데이트
+            # 차량 상태별 꺾은선 생성
+            fig_vehicle = px.line(df_vehicle, x="시간", y="수량", title="🚗 차량 혼잡도 추이")
+            fig_vehicle.update_traces(mode='lines', line=dict(color="blue"))  # 선은 하나의 색으로 고정
+
+            # 상태별로 마커 추가 (상태가 바뀐 지점마다 마커)
+            added_status = set()
+            
+            for seg in split_by_status(df_vehicle):
+                status = seg.iloc[0]["상태"]
+                show_legend = status not in added_status
+                fig_vehicle.add_scatter(
+                    x=seg["시간"], y=seg["수량"],
+                    mode="markers",
+                    marker=dict(color=color_map.get(status, "gray"), size=8, symbol="circle"),
+                    name=status if show_legend else None,
+                    showlegend=show_legend
+                )
+                added_status.add(status)
+
+            # x축을 5초 간격으로 설정
+            fig_vehicle.update_layout(
+                xaxis=dict(
+                    tickformat="%H:%M:%S",
+                    tickangle=45,
+                    tickmode="linear",
+                    dtick=5 * 1000  # 5초 간격으로 설정 (밀리초 단위)
+                )
+            )
+
+            # 시각화 업데이트
             chart_person_area.plotly_chart(fig_person, use_container_width=True, key=f"line_chart_person_{uuid.uuid4()}")
             chart_vehicle_area.plotly_chart(fig_vehicle, use_container_width=True, key=f"line_chart_vehicle_{uuid.uuid4()}")
             
