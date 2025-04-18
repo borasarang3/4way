@@ -1,10 +1,6 @@
-# class
-names :
-    0: bicycle 
-    1: bus
-    2: car
-    3: crosswalk
-    4: motorcycle
-    5: person
-    6: traffic_light
-    7: truck
+Python==3.9.21
+Flask==3.0.3
+numpy==1.23.0
+opencv_python==4.8.0
+Pillow==10.4.0
+ultralytics==8.3.100
